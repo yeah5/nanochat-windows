@@ -6,6 +6,9 @@ import torch
 import torch.distributed as dist
 from torch import Tensor
 
+from nanochat.dist_utils import get_rank_safe
+from nanochat.dist_utils import get_world_size_safe
+
 
 class DistAdamW(torch.optim.Optimizer):
     """
@@ -18,9 +21,12 @@ class DistAdamW(torch.optim.Optimizer):
 
     @torch.compile
     @torch.no_grad()
+
     def step(self):
-        rank = dist.get_rank()
-        world_size = dist.get_world_size()
+
+        distributed = dist.is_available() and dist.is_initialized()
+        rank = get_rank_safe()
+        world_size = get_world_size_safe()
         reduce_scatter_futures: list[torch.Future] = []
         all_reduce_futures: list[torch.Future] = []
         grad_slices = []
@@ -31,7 +37,17 @@ class DistAdamW(torch.optim.Optimizer):
                 grad = params[base_i].grad
                 rank_size = grad.shape[0] // world_size
                 grad_slice = torch.empty_like(grad[:rank_size])
-                reduce_scatter_futures.append(dist.reduce_scatter_tensor(grad_slice, grad, op=dist.ReduceOp.AVG, async_op=True).get_future())
+                if distributed and world_size > 1:
+                    reduce_scatter_futures.append(
+                        dist.reduce_scatter_tensor(
+                            grad_slice, grad,
+                            op=dist.ReduceOp.AVG,
+                            async_op=True
+                        ).get_future()
+                    )
+                else:
+                    # Single-process fallback: just copy gradients
+                    grad_slice.copy_(grad)
                 grad_slices.append(grad_slice)
 
         idx = 0

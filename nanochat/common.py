@@ -102,14 +102,16 @@ def print0(s="",**kwargs):
 def print_banner():
     # Cool DOS Rebel font ASCII banner made with https://manytools.org/hacker-tools/ascii-banner/
     banner = """
-                                                       █████                █████
-                                                      ░░███                ░░███
-     ████████    ██████   ████████    ██████   ██████  ░███████    ██████  ███████
-    ░░███░░███  ░░░░░███ ░░███░░███  ███░░███ ███░░███ ░███░░███  ░░░░░███░░░███░
-     ░███ ░███   ███████  ░███ ░███ ░███ ░███░███ ░░░  ░███ ░███   ███████  ░███
-     ░███ ░███  ███░░███  ░███ ░███ ░███ ░███░███  ███ ░███ ░███  ███░░███  ░███ ███
-     ████ █████░░████████ ████ █████░░██████ ░░██████  ████ █████░░███████  ░░█████
-    ░░░░ ░░░░░  ░░░░░░░░ ░░░░ ░░░░░  ░░░░░░   ░░░░░░  ░░░░ ░░░░░  ░░░░░░░░   ░░░░░
+                                                       █████                 █████                               ███               ████████   ████████ 
+                                                      ░░███                 ░░███                                ░░░              ███░░░░███ ███░░░░███
+     ████████    ██████   ████████    ██████   ██████  ░███████    ██████   ███████              █████ ███ █████ ████  ████████  ░░░    ░███░░░    ░███
+    ░░███░░███  ░░░░░███ ░░███░░███  ███░░███ ███░░███ ░███░░███  ░░░░░███ ░░░███░    ██████████░░███ ░███░░███ ░░███ ░░███░░███    ██████░    ███████ 
+     ░███ ░███   ███████  ░███ ░███ ░███ ░███░███ ░░░  ░███ ░███   ███████   ░███    ░░░░░░░░░░  ░███ ░███ ░███  ░███  ░███ ░███   ░░░░░░███  ███░░░░  
+     ░███ ░███  ███░░███  ░███ ░███ ░███ ░███░███  ███ ░███ ░███  ███░░███   ░███ ███            ░░███████████   ░███  ░███ ░███  ███   ░███ ███      █
+     ████ █████░░████████ ████ █████░░██████ ░░██████  ████ █████░░████████  ░░█████              ░░████░████    █████ ████ █████░░████████ ░██████████
+    ░░░░ ░░░░░  ░░░░░░░░ ░░░░ ░░░░░  ░░░░░░   ░░░░░░  ░░░░ ░░░░░  ░░░░░░░░    ░░░░░                ░░░░ ░░░░    ░░░░░ ░░░░ ░░░░░  ░░░░░░░░  ░░░░░░░░░░ 
+                                                                                                                                                   
+                                                                                                                                                                                                                                                                                             
     """
     print0(banner)
 
@@ -150,47 +152,82 @@ def autodetect_device_type():
     print0(f"Autodetected device type: {device_type}")
     return device_type
 
-def compute_init(device_type="cuda"): # cuda|cpu|mps
+
+
+def compute_init(device_type="cuda"):  # cuda|cpu|mps
     """Basic initialization that we keep doing over and over, so make common."""
 
+    import sys
+    import torch
+    import torch.distributed as dist
+
     assert device_type in ["cuda", "mps", "cpu"], "Invalid device type atm"
+
     if device_type == "cuda":
-        assert torch.cuda.is_available(), "Your PyTorch installation is not configured for CUDA but device_type is 'cuda'"
+        assert torch.cuda.is_available(), (
+            "Your PyTorch installation is not configured for CUDA "
+            "but device_type is 'cuda'"
+        )
+
     if device_type == "mps":
-        assert torch.backends.mps.is_available(), "Your PyTorch installation is not configured for MPS but device_type is 'mps'"
+        assert torch.backends.mps.is_available(), (
+            "Your PyTorch installation is not configured for MPS "
+            "but device_type is 'mps'"
+        )
 
     # Reproducibility
-    # Note that we set the global seeds here, but most of the code uses explicit rng objects.
-    # The only place where global rng might be used is nn.Module initialization of the model weights.
     torch.manual_seed(42)
     if device_type == "cuda":
         torch.cuda.manual_seed(42)
-    # skipping full reproducibility for now, possibly investigate slowdown later
-    # torch.use_deterministic_algorithms(True)
 
     # Precision
     if device_type == "cuda":
-        torch.backends.cuda.matmul.fp32_precision = "tf32" # uses tf32 instead of fp32 for matmuls
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    if device_type == "cuda":
+        assert torch.backends.cuda.matmul.allow_tf32
 
-    # Distributed setup: Distributed Data Parallel (DDP), optional, and requires CUDA
+    # Distributed info (torchrun may still set env vars)
     is_ddp_requested, ddp_rank, ddp_local_rank, ddp_world_size = get_dist_info()
+
+    # ------------------------------------------------------------------
+    # Windows: explicitly DISABLE DDP
+    # ------------------------------------------------------------------
+    if sys.platform == "win32":
+        device = torch.device("cuda" if device_type == "cuda" else device_type)
+
+        if ddp_rank == 0:
+            logger.info("Running on Windows: DDP disabled, using single-process CUDA")
+
+        return False, 0, 0, 1, device
+
+    # ------------------------------------------------------------------
+    # Non-Windows: original NanoChat behavior (Linux / macOS)
+    # ------------------------------------------------------------------
     if is_ddp_requested and device_type == "cuda":
         device = torch.device("cuda", ddp_local_rank)
-        torch.cuda.set_device(device)  # make "cuda" default to this device
-        dist.init_process_group(backend="nccl", device_id=device)
+        torch.cuda.set_device(device)
+
+        dist.init_process_group(
+            backend="nccl",
+            device_id=device
+        )
+
         dist.barrier()
     else:
-        device = torch.device(device_type) # mps|cpu
+        device = torch.device(device_type)
 
     if ddp_rank == 0:
         logger.info(f"Distributed world size: {ddp_world_size}")
 
     return is_ddp_requested, ddp_rank, ddp_local_rank, ddp_world_size, device
 
+
 def compute_cleanup():
     """Companion function to compute_init, to clean things up before script exit"""
     if is_ddp_initialized():
         dist.destroy_process_group()
+
 
 class DummyWandb:
     """Useful if we wish to not use wandb but have all the same signatures"""

@@ -6,6 +6,10 @@ import torch
 from torch import Tensor
 import torch.distributed as dist
 
+from nanochat.dist_utils import get_rank_safe
+from nanochat.dist_utils import get_world_size_safe
+
+
 @torch.compile
 def zeropower_via_newtonschulz5(G: Tensor, steps: int) -> Tensor:
     """
@@ -83,6 +87,7 @@ class Muon(torch.optim.Optimizer):
                 p.add_(g, alpha=-group["lr"] * max(1, p.size(-2) / p.size(-1))**0.5)
 
 
+
 class DistMuon(torch.optim.Optimizer):
     """
     Muon: SGD-momentum + (optional) Nesterov, then orthogonalize the 2D update via Newton–Schulz,
@@ -109,7 +114,7 @@ class DistMuon(torch.optim.Optimizer):
         defaults = dict(lr=lr, momentum=momentum, nesterov=nesterov, ns_steps=ns_steps)
         params = list(params)
         assert all(p.ndim == 2 for p in params), "Muon expects 2D parameters only"
-        rank = dist.get_rank()
+        rank = get_rank_safe()
         # Group all parameters by their shape
         shapes = sorted({p.shape for p in params}) # sort to ensure consistent / deterministic ordering
         param_groups = []
@@ -125,8 +130,8 @@ class DistMuon(torch.optim.Optimizer):
 
     @torch.no_grad()
     def step(self):
-        rank = dist.get_rank()
-        world_size = dist.get_world_size()
+        rank = get_rank_safe()
+        world_size = get_world_size_safe()
 
         # Ensure all grads exist
         assert all(p.grad is not None for group in self.param_groups for p in group["params"]), "All params must have grads"
