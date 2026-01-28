@@ -36,18 +36,19 @@ device_type = "" # cuda|cpu|mps (empty => autodetect)
 model_tag = None # model tag to load the model from (base model or midtrained model)
 step = None # step to load the model from (base model or midtrained model)
 dtype = "bfloat16"
-num_iterations = -1 # explicit number of steps of the optimization (-1 = disable)
+num_iterations = 1 # explicit number of steps of the optimization (-1 = disable) default of disabled
 max_seq_len = 2048
-device_batch_size = 32
+device_batch_size = 1 # default = 32
 unembedding_lr = 0.004
 embedding_lr = 0.2
 matrix_lr = 0.02
 init_lr_frac = 1.0 # initial learning rate is this fraction of the base learning rate
 weight_decay = 0.0
-eval_every = 150 # -1 = disable
-eval_tokens = 20*524288
-total_batch_size = 524288
+eval_every = -1 # -1 = disable - default = 150
+eval_tokens = 524288 # default = 20*524288
+total_batch_size = 4096 # default = 524288
 dry_run = 0 # dry_run=1 is for experiments: we will log to wandb but we won't write checkpoints or report
+eval_on = False #true to enable evaluation during midtraining
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open(os.path.join('nanochat', 'configurator.py')).read()) # overrides from command line or config file
 user_config = {k: globals()[k] for k in config_keys} # possibly useful for logging
@@ -176,6 +177,7 @@ x, y = next(train_loader) # prefetch the very first batch of data
 min_val_bpb = float("inf")
 smooth_train_loss = 0 # EMA of training loss
 ema_beta = 0.9 # EMA decay factor
+val_bpb = 1.0
 total_training_time = 0 # total wall-clock time of training
 step = 0
 while True:
@@ -192,16 +194,18 @@ while True:
         model.eval()
         val_loader = build_val_loader()
         eval_steps = eval_tokens // (device_batch_size * max_seq_len * ddp_world_size)
-        with autocast_ctx:
-            val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
-        print0(f"Step {step:05d} | Validation bpb: {val_bpb:.4f}")
-        if val_bpb < min_val_bpb:
-            min_val_bpb = val_bpb
-        wandb_run.log({
-            "step": step,
-            "total_training_flops": flops_so_far,
-            "total_training_time": total_training_time,
-            "val/bpb": val_bpb,
+        if eval_on:
+            print0("Evaluating validation bpb...")
+            with autocast_ctx:
+                val_bpb = evaluate_bpb(model, val_loader, eval_steps, token_bytes)
+            print0(f"Step {step:05d} | Validation bpb: {val_bpb:.4f}")
+            if val_bpb < min_val_bpb:
+                min_val_bpb = val_bpb
+            wandb_run.log({
+                "step": step,
+                "total_training_flops": flops_so_far,
+                "total_training_time": total_training_time,
+                "val/bpb": val_bpb,
         })
         model.train()
 

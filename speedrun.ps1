@@ -161,32 +161,75 @@ if ($datasetPid) {
 # Number of processes/GPUs to use
 $env:NPROC_PER_NODE = "1"
 
+# Evaluate or not
+$env:EVAL_OR_NOT = "false"
+$env:MEASURE_LOSS = "true"
 
-
+Write-Host ""
+Write-Host "    !!"
 Write-Host "Starting base model pretraining..."
+Write-Host "    !!"
+Write-Host ""
 & torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.base_train -- --depth=20 --run=$env:WANDB_RUN
 
+Write-Host ""
+Write-Host "    !!"
 Write-Host "Evaluating base model loss..."
-& torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.base_loss
+Write-Host "    !!"
+Write-Host ""
+if ($env:EVAL_OR_NOT -eq "false") {
+    Write-Host "Skipping base model loss as per EVAL_OR_NOT=$env:EVAL_OR_NOT"
+    } else {
+    & torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.base_loss
+}
 
+Write-Host ""
+Write-Host "    !!"
 Write-Host "Running base model core evals..."
-& torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.base_eval
+Write-Host "    !!"
+Write-Host ""
+if ($env:EVAL_OR_NOT -eq "false") {
+    Write-Host "Skipping base model core evals as per EVAL_OR_NOT=$env:EVAL_OR_NOT"
+    } else {
+    & torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.base_eval
+}
 
 # -----------------------------------------------------------------------------
 # Midtraining
+Write-Host ""
+Write-Host "    !!"
 Write-Host "Downloading synthetic identity conversations..."
+Write-Host "    !!"
+Write-Host ""
 $identityPath = Join-Path $env:NANOCHAT_BASE_DIR "identity_conversations.jsonl"
 Invoke-WebRequest -Uri "https://karpathy-public.s3.us-west-2.amazonaws.com/identity_conversations.jsonl" -OutFile $identityPath -UseBasicParsing
 
+
+Write-Host ""
+Write-Host "    !!"
 Write-Host "Running midtraining..."
+Write-Host "    !!"
+Write-Host ""
 & torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.mid_train -- --run=$env:WANDB_RUN
-& torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.chat_eval -- -i mid
+if ($env:EVAL_OR_NOT -eq "false") {
+    Write-Host "Skipping mid training core evals as per EVAL_OR_NOT=$env:EVAL_OR_NOT"
+    } else {
+    & torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.chat_eval -- -i mid
+}
 
 # -----------------------------------------------------------------------------
 # Supervised Finetuning (SFT)
+Write-Host ""
+Write-Host "    !!"
 Write-Host "Running supervised finetuning (SFT)..."
+Write-Host "    !!"
+Write-Host ""
 & torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.chat_sft -- --run=$env:WANDB_RUN
-& torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.chat_eval -- -i sft
+if ($env:EVAL_OR_NOT -eq "false") {
+    Write-Host "Skipping SFT evals as per EVAL_OR_NOT=$env:EVAL_OR_NOT"
+    } else {
+    & torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.chat_eval -- -i sft
+}
 
 # -----------------------------------------------------------------------------
 # Optional Reinforcement Learning (commented out in original)
@@ -195,8 +238,14 @@ Write-Host "Running supervised finetuning (SFT)..."
 
 # -----------------------------------------------------------------------------
 # Generate final report
+Write-Host ""
+Write-Host "    !!"
 Write-Host "Generating final report..."
+Write-Host "    !!"
+Write-Host ""
 & python -m nanochat.report generate
-
-Write-Host "Done."
+Write-Host ""
+Write-Host ""
+Write-Host ""
+Write-Host "All Done!"
  

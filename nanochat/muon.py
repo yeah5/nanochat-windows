@@ -6,7 +6,8 @@ import torch
 from torch import Tensor
 import torch.distributed as dist
 
-from nanochat.dist_utils import get_rank_safe
+from nanochat.common import copy_identity
+from nanochat.dist_utils import get_rank_safe, dist_enabled
 from nanochat.dist_utils import get_world_size_safe
 
 
@@ -137,7 +138,7 @@ class DistMuon(torch.optim.Optimizer):
         assert all(p.grad is not None for group in self.param_groups for p in group["params"]), "All params must have grads"
 
         # Kick off all the reduce scatter operations to average up the gradients across all ranks
-        all_reduce_futures = []
+        reduce_scatter_futures = []
         for group in self.param_groups:
             params = group["params"]
             zero_buffer = group["zero_buffer"]
@@ -152,8 +153,21 @@ class DistMuon(torch.optim.Optimizer):
                 # the output buffer gets strided across the group based on the rank
                 rs_output = params[owner_idx].grad if owner_idx < len(params) else torch.empty_like(zero_buffer)
                 # reduce scatter the gradients within this group of world_size params
-                work = dist.reduce_scatter(rs_output, rs_input, op=dist.ReduceOp.AVG, async_op=True).get_future()
-                all_reduce_futures.append(work)
+
+                if dist_enabled():
+                    work = dist.reduce_scatter(
+                        rs_output,
+                        rs_input,
+                        op=dist.ReduceOp.AVG,
+                        async_op=True
+                    ).get_future()
+                    reduce_scatter_futures.append(work)
+                else:
+                    # single-rank fallback
+                    if isinstance(rs_input, (list, tuple)):
+                        rs_output.copy_(rs_input[0])
+                    else:
+                        rs_output.copy_(rs_input)
 
         # Now each rank computes the update and gathers
         future_idx = 0
@@ -166,7 +180,9 @@ class DistMuon(torch.optim.Optimizer):
                 # The compute owner of each param is rank i % world_size
                 owner_idx = base_i + rank # calculate the index of the param that this rank owns
                 # Wait for the reduce scatter to complete
-                all_reduce_futures[future_idx].wait() # possibly later we could use wait_any polling instead
+                for fut in reduce_scatter_futures:
+                    fut.wait()
+
                 future_idx += 1
                 # Owner computes the Muon update, result is in its param
                 if owner_idx < len(params):
@@ -185,8 +201,15 @@ class DistMuon(torch.optim.Optimizer):
                 ag_input = params[owner_idx] if owner_idx < len(params) else zero_buffer
                 ag_output = params[base_i:base_i + world_size]
                 ag_output.extend([torch.empty_like(zero_buffer) for _ in range(world_size - len(ag_output))]) # pad
-                work = dist.all_gather(ag_output, ag_input, async_op=True).get_future()
-                all_gather_futures.append(work)
+                if dist_enabled():
+                    work = dist.all_gather(
+                        ag_output,
+                        ag_input,
+                        async_op=True
+                    ).get_future()
+                    all_gather_futures.append(work)
+                else:
+                    copy_identity(ag_output, ag_input)
 
         # Wait for all work to finish
         torch.futures.collect_all(all_gather_futures).wait()

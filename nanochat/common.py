@@ -47,6 +47,20 @@ def setup_default_logging():
 setup_default_logging()
 logger = logging.getLogger(__name__)
 
+def copy_identity(output, input_copy_id):
+    if isinstance(output, (list, tuple)):
+        assert len(output) == 1
+        if isinstance(input_copy_id, (list, tuple)):
+            output[0].copy_(input_copy_id[0])
+        else:
+            output[0].copy_(input_copy_id)
+    else:
+        if isinstance(input_copy_id, (list, tuple)):
+            output.copy_(input_copy_id[0])
+        else:
+            output.copy_(input_copy_id)
+
+
 def get_base_dir():
     # co-locate nanochat intermediates with other cached data in ~/.cache (by default)
     if os.environ.get("NANOCHAT_BASE_DIR"):

@@ -145,13 +145,18 @@ def run_categorical_eval(task_object, tokenizer, model, batch_size, max_problems
     if ddp:
         num_passed_tensor = torch.tensor([num_passed], dtype=torch.long, device=device)
         total_tensor = torch.tensor([total], dtype=torch.long, device=device)
-        dist.all_reduce(num_passed_tensor, op=dist.ReduceOp.SUM)
-        dist.all_reduce(total_tensor, op=dist.ReduceOp.SUM)
+        if dist.is_available() and dist.is_initialized():
+            dist.all_reduce(num_passed_tensor, op=dist.ReduceOp.SUM)
+            dist.all_reduce(total_tensor, op=dist.ReduceOp.SUM)
         num_passed = num_passed_tensor.item()
         total = total_tensor.item()
 
-    average = num_passed/total
-    print0(f"Final: {num_passed}/{total} ({100*average:.2f}%)")
+    if total == 0:
+        average = 0.0
+        print0("Final: 0/0 (0.00%) — no evaluation samples processed")
+    else:
+        average = num_passed / total
+        print0(f"Final: {num_passed}/{total} ({100 * average:.2f}%)")
     return average
 
 # -----------------------------------------------------------------------------

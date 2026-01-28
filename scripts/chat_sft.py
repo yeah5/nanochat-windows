@@ -40,10 +40,10 @@ step = None # step to load the model from (base model or midtrained model)
 # compute/precision
 device_type = "" # cuda|cpu|mps (empty => autodetect)
 dtype = "bfloat16"
-device_batch_size = 4 # max to avoid OOM
+device_batch_size = 1 # max to avoid OOM - default = 4
 # optimization
 num_epochs = 1
-num_iterations = -1 # override number of iterations (-1 = disable, use num_epochs to derive it)
+num_iterations = 1 # override number of iterations (-1 = disable, use num_epochs to derive it) - default = -1
 target_examples_per_step = 32
 unembedding_lr = 0.004
 embedding_lr = 0.2
@@ -207,8 +207,7 @@ for step in range(num_iterations):
         })
         model.train()
 
-    if last_step:
-        break
+
 
     # evaluate the gradient
     num_tokens = torch.tensor(0, device=device) # the number of "active" tokens of supervision seen
@@ -244,6 +243,8 @@ for step in range(num_iterations):
         "train_loss": train_loss_item,
         "num_tokens": num_tokens_item,
     })
+    if last_step:
+        break
     step += 1
 
 # Save the model at the end of the run
