@@ -36,7 +36,7 @@ device_type = "" # cuda|cpu|mps (empty => autodetect)
 model_tag = None # model tag to load the model from (base model or midtrained model)
 step = None # step to load the model from (base model or midtrained model)
 dtype = "bfloat16"
-num_iterations = 1 # explicit number of steps of the optimization (-1 = disable) default of disabled
+num_iterations = 3 # explicit number of steps of the optimization (-1 = disable) default of disabled
 max_seq_len = 2048
 device_batch_size = 1 # default = 32
 unembedding_lr = 0.004

@@ -36,10 +36,10 @@ run = "dummy" # wandb run name default ("dummy" is special - we won't log to wan
 # Runtime
 device_type = "" # cuda|cpu|mps (empty => autodetect good device type default, in order: CUDA > MPS > CPU)
 # Model architecture
-depth = 2 # the depth of the Transformer model to train, rest of the kwargs are derived - def = 20
+depth = 20 # the depth of the Transformer model to train, rest of the kwargs are derived - def = 20
 max_seq_len = 2048 # max context length - def = 2048
 # Training horizon. Only one of these 3 will be used, in this order of precedence.
-num_iterations = 1 # explicit number of steps of the optimization (-1 = disable) - def = -1
+num_iterations = 3 # explicit number of steps of the optimization (-1 = disable) - def = -1
 target_flops = -1.0 # calculate num_iterations to reach target_flops. Useful for scaling laws experiments (-1 = disable)
 target_param_data_ratio = 20 # calculate num_iterations to maintain fixed data:param ratio (Chinchilla=20) (-1 = disable)
 # Optimization

@@ -43,7 +43,7 @@ dtype = "bfloat16"
 device_batch_size = 1 # max to avoid OOM - default = 4
 # optimization
 num_epochs = 1
-num_iterations = 1 # override number of iterations (-1 = disable, use num_epochs to derive it) - default = -1
+num_iterations = 3 # override number of iterations (-1 = disable, use num_epochs to derive it) - default = -1
 target_examples_per_step = 32
 unembedding_lr = 0.004
 embedding_lr = 0.2
