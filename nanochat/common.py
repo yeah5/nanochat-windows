@@ -5,6 +5,7 @@ Common utilities for nanochat.
 import os
 import re
 import logging
+import sys
 import urllib.request
 import torch
 import torch.distributed as dist
@@ -174,6 +175,19 @@ def compute_init(device_type="cuda"): # cuda|cpu|mps
 
     # Distributed setup: Distributed Data Parallel (DDP), optional, and requires CUDA
     is_ddp_requested, ddp_rank, ddp_local_rank, ddp_world_size = get_dist_info()
+
+    # ------------------------------------------------------------------
+    # Windows: explicitly DISABLE DDP
+    # ------------------------------------------------------------------
+    if sys.platform == "win32":
+        device = torch.device("cuda" if device_type == "cuda" else device_type)
+
+        if ddp_rank == 0:
+            logger.info("Running on Windows: DDP disabled, using single-process CUDA")
+
+        return False, 0, 0, 1, device
+
+
     if is_ddp_requested and device_type == "cuda":
         device = torch.device("cuda", ddp_local_rank)
         torch.cuda.set_device(device)  # make "cuda" default to this device
@@ -244,6 +258,7 @@ def get_peak_flops(device_name: str) -> float:
         (["5090"], 209.5e12),
         (["4090"], 165.2e12),
         (["3090"], 71e12),
+        (["NVIDIA GeForce GTX 1660 SUPER"], 10e12),
     )
     for patterns, flops in _PEAK_FLOPS_TABLE:
         if all(p in name for p in patterns):
