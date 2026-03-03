@@ -271,8 +271,11 @@ class GPT(nn.Module):
         pattern = config.window_pattern.upper()
         assert all(c in "SL" for c in pattern), f"Invalid window_pattern: {pattern}. Use only S and L."
         # Map characters to window sizes
+        min_window_size = 8 # enforce a minimum window size for short attention to avoid degenerate cases
         long_window = config.sequence_len
         short_window = long_window // 2
+        short_window = min(short_window, min_window_size)
+        window_sizing_start = 0.5
         char_to_window = {
             "L": (long_window, 0),
             "S": (short_window, 0),
@@ -281,7 +284,13 @@ class GPT(nn.Module):
         window_sizes = []
         for layer_idx in range(config.n_layer):
             char = pattern[layer_idx % len(pattern)]
-            window_sizes.append(char_to_window[char])
+            layer_progress = (layer_idx / config.n_layer)
+            #the below logic crudely emulates an exponential increase in window size, with starting point at window_sizing_start.
+            window = short_window
+            if layer_progress > window_sizing_start:
+                window = int(long_window * (1 - (1 - layer_progress) * 2))
+            #window_sizes.append(char_to_window[char])
+            window_sizes.append(window)
         # Final layer always gets full context
         window_sizes[-1] = (long_window, 0)
         return window_sizes
