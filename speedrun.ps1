@@ -102,9 +102,9 @@ if (CommandExists "uv") {
 Write-Host "Downloading initial dataset shards (8)..."
 & python -m nanochat.dataset -n 8
 
-Write-Host "Kicking off background dataset download (240 shards)..."
+Write-Host "Kicking off background dataset download (170 shards)..."
 # Start background process and capture PID
-$proc = Start-Process -FilePath "python" -ArgumentList "-m nanochat.dataset -n 370" -NoNewWindow -PassThru
+$proc = Start-Process -FilePath "python" -ArgumentList "-m nanochat.dataset -n 170" -NoNewWindow -PassThru
 $datasetPid = $proc.Id
 
 Write-Host "Training tokenizer (vocab size 2^16) on ~2B chars..."
@@ -170,7 +170,7 @@ Write-Host "    !!"
 Write-Host "Starting base model pretraining..."
 Write-Host "    !!"
 Write-Host ""
-& torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.base_train -- --depth=26 --target-param-data-ratio=8.25 --device-batch-size=8 --fp8 --run=$env:WANDB_RUN
+& torchrun --standalone --nproc_per_node=$env:NPROC_PER_NODE -m scripts.base_train -- --depth=24 --target-param-data-ratio=9.5 --device-batch-size=8 --fp8 --run=$env:WANDB_RUN
 
 Write-Host ""
 Write-Host "    !!"
