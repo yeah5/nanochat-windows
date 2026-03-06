@@ -21,6 +21,7 @@ import torch.nn.functional as F
 
 from nanochat.common import get_dist_info, print0
 from nanochat.optim import MuonAdamW, DistMuonAdamW
+from scripts.logger import log
 
 # Our custom Flash Attention module that automatically uses FA3 on Hopper+ and SDPA fallback elsewhere
 from nanochat.flash_attention import flash_attn
@@ -290,7 +291,9 @@ class GPT(nn.Module):
             if layer_progress > window_sizing_start:
                 window = int(long_window * (1 - (1 - layer_progress) * 2))
             #window_sizes.append(char_to_window[char])
-            window_sizes.append(window)
+            log(f"Computed window size for layer {layer_idx}: {window} (progress: {layer_progress:.2f})")
+            window_t = (window, 0)
+            window_sizes.append(window_t)
         # Final layer always gets full context
         window_sizes[-1] = (long_window, 0)
         return window_sizes
@@ -319,6 +322,7 @@ class GPT(nn.Module):
         # Sum attention FLOPs per layer, accounting for sliding window
         attn_flops = 0
         for window_size in self.window_sizes:
+            log(f"WindowSize: {window_size}")
             window = window_size[0]  # (left, right) tuple, we use left
             effective_seq = t if window < 0 else min(window, t)
             attn_flops += 12 * h * q * effective_seq
